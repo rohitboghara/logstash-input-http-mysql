@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}MySQL Logs{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">MySQL Logs</h1>
+    <p class="page-sub">All records from <code class="inline-code">user_logs</code> table</p>
+  </div>
+  <div class="header-actions">
+    <select class="code-input sm" id="filterAction" onchange="loadLogs()">
+      <option value="">All actions</option>
+      <option value="login">login</option>
+      <option value="logout">logout</option>
+      <option value="failed_login">failed_login</option>
+      <option value="create_order">create_order</option>
+      <option value="profile_update">profile_update</option>
+    </select>
+    <button class="btn-outline-custom" onclick="loadLogs()">
+      <i class="bi bi-arrow-clockwise"></i> Refresh
+    </button>
+  </div>
+</div>
+
+<!-- Record count bar -->
+<div class="record-bar" id="recordBar">
+  <span class="mono dim" id="recordCount">Loading…</span>
+  <div class="page-controls">
+    <button class="page-btn" id="prevBtn" onclick="prevPage()" disabled>
+      <i class="bi bi-chevron-left"></i>
+    </button>
+    <span class="mono" id="pageLabel">—</span>
+    <button class="page-btn" id="nextBtn" onclick="nextPage()">
+      <i class="bi bi-chevron-right"></i>
+    </button>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-body p0">
+    <div id="logsTable">
+      <div style="padding:3rem;text-align:center"><div class="loading-ring"></div></div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1;
+const PAGE_SIZE = 20;
+let totalRecords = 0;
+
+document.addEventListener("DOMContentLoaded", loadLogs);
+
+async function loadLogs() {
+  const action = document.getElementById("filterAction").value;
+  const offset = (currentPage - 1) * PAGE_SIZE;
+
+  try {
+    let url = `/api/logs?limit=${PAGE_SIZE}&offset=${offset}`;
+    if (action) url += `&action=${action}`;
+
+    const r = await fetch(url);
+    const d = await r.json();
+
+    if (!d.success) {
+      document.getElementById("logsTable").innerHTML =
+        `<div class="alert-box red" style="margin:1.5rem"><i class="bi bi-wifi-off"></i> ${d.error}</div>`;
+      return;
+    }
+
+    totalRecords = d.total;
+    renderTable(d.logs);
+    updatePager();
+
+  } catch(e) {
+    document.getElementById("logsTable").innerHTML =
+      `<div class="alert-box red" style="margin:1.5rem"><i class="bi bi-wifi-off"></i> ${e.message}</div>`;
+  }
+}
+
+function renderTable(rows) {
+  const el = document.getElementById("logsTable");
+  if (!rows.length) {
+    el.innerHTML = `<div class="feed-empty" style="padding:3rem">
+      <i class="bi bi-inbox"></i><p>No records found.</p></div>`;
+    return;
+  }
+
+  const actionClass = {
+    login:"badge-green", logout:"badge-amber", failed_login:"badge-red",
+    create_order:"badge-blue", profile_update:"badge-purple",
+  };
+
+  el.innerHTML = `
+  <div class="table-scroll">
+  <table class="log-table full">
+    <thead><tr>
+      <th>#&nbsp;ID</th>
+      <th>Username</th>
+      <th>Action</th>
+      <th>Source IP</th>
+      <th>Created At</th>
+    </tr></thead>
+    <tbody>
+      ${rows.map(r => `
+      <tr>
+        <td class="mono dim">${r.id}</td>
+        <td class="mono">${r.username}</td>
+        <td><span class="action-badge ${actionClass[r.action]||'badge-gray'}">${r.action.replace(/_/g," ")}</span></td>
+        <td class="mono dim">${r.source_ip}</td>
+        <td class="mono dim">${formatDatetime(r.created_at)}</td>
+      </tr>`).join("")}
+    </tbody>
+  </table>
+  </div>`;
+}
+
+function updatePager() {
+  const totalPages = Math.ceil(totalRecords / PAGE_SIZE) || 1;
+  document.getElementById("recordCount").textContent =
+    `${totalRecords.toLocaleString()} total record${totalRecords !== 1 ? "s" : ""}`;
+  document.getElementById("pageLabel").textContent =
+    `Page ${currentPage} / ${totalPages}`;
+  document.getElementById("prevBtn").disabled = currentPage <= 1;
+  document.getElementById("nextBtn").disabled = currentPage >= totalPages;
+}
+
+function prevPage() { if (currentPage > 1) { currentPage--; loadLogs(); } }
+function nextPage() {
+  if (currentPage < Math.ceil(totalRecords / PAGE_SIZE)) { currentPage++; loadLogs(); }
+}
+
+function formatDatetime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleString([], {
+    year:"numeric", month:"2-digit", day:"2-digit",
+    hour:"2-digit", minute:"2-digit", second:"2-digit"
+  });
+}
+</script>
+{% endblock %}

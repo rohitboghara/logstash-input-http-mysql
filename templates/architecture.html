@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}Architecture{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Architecture</h1>
+    <p class="page-sub">How the application works</p>
+  </div>
+</div>
+
+<!-- ── Flow diagram ────────────────────────────────────────────────────── -->
+<div class="panel mb20">
+  <div class="panel-header">
+    <span class="panel-title"><i class="bi bi-diagram-3"></i> Data Flow</span>
+  </div>
+  <div class="panel-body">
+    <div class="arch-flow">
+
+      <!-- Browser -->
+      <div class="arch-node primary">
+        <div class="arch-icon"><i class="bi bi-globe2"></i></div>
+        <div class="arch-label">Browser / UI</div>
+        <div class="arch-sub">User triggers event</div>
+      </div>
+
+      <div class="arch-arrow">
+        <div class="arrow-line"></div>
+        <div class="arrow-label">HTTP POST<br/><code class="inline-code">/api/generate_log</code></div>
+        <div class="arrow-head">→</div>
+      </div>
+
+      <!-- Flask -->
+      <div class="arch-node accent">
+        <div class="arch-icon"><i class="bi bi-server"></i></div>
+        <div class="arch-label">Flask Backend</div>
+        <div class="arch-sub">Python · app.py</div>
+      </div>
+
+      <!-- Two outputs -->
+      <div class="arch-fork">
+        <div class="fork-arm top">
+          <div class="fork-arrow">
+            <div class="arrow-line"></div>
+            <div class="arrow-head">→</div>
+          </div>
+          <div class="arch-node green-node">
+            <div class="arch-icon"><i class="bi bi-database-fill"></i></div>
+            <div class="arch-label">MySQL Database</div>
+            <div class="arch-sub">Persistent storage<br/>Table: user_logs</div>
+          </div>
+        </div>
+        <div class="fork-arm bottom">
+          <div class="fork-arrow">
+            <div class="arrow-line"></div>
+            <div class="arrow-head">→</div>
+          </div>
+          <div class="arch-node amber-node">
+            <div class="arch-icon"><i class="bi bi-broadcast"></i></div>
+            <div class="arch-label">External Endpoint</div>
+            <div class="arch-sub">HTTP POST · JSON<br/>Configurable URL</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── Details ─────────────────────────────────────────────────────────── -->
+<div class="content-row">
+
+  <div class="panel" style="flex:1">
+    <div class="panel-header">
+      <span class="panel-title"><i class="bi bi-database-fill"></i> MySQL Storage</span>
+    </div>
+    <div class="panel-body">
+      <p class="body-text">Every event is immediately persisted to MySQL inside the
+        <code class="inline-code">user_logs</code> table. The schema includes:
+      </p>
+      <pre class="code-block">CREATE TABLE user_logs (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  username   VARCHAR(100),
+  action     VARCHAR(100),
+  source_ip  VARCHAR(50),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);</pre>
+      <p class="body-text">
+        Records can be browsed on the <a href="/logs" class="text-link">MySQL Logs</a> page
+        with filtering and pagination.
+      </p>
+    </div>
+  </div>
+
+  <div class="panel" style="flex:1">
+    <div class="panel-header">
+      <span class="panel-title"><i class="bi bi-broadcast"></i> External HTTP Endpoint</span>
+    </div>
+    <div class="panel-body">
+      <p class="body-text">
+        Simultaneously with the MySQL write, the Flask backend sends an HTTP POST request
+        to a configurable external URL with a JSON body:
+      </p>
+      <pre class="code-block">{
+  "username":  "alice_smith",
+  "action":    "login",
+  "source":    "web_app",
+  "source_ip": "192.168.1.10",
+  "timestamp": "2025-01-15T08:23:11Z"
+}</pre>
+      <p class="body-text">
+        The endpoint URL is set in <code class="inline-code">app.py</code> via
+        <code class="inline-code">EXTERNAL_LOG_ENDPOINT</code> and can also be changed
+        at runtime on the <a href="/generator" class="text-link">Event Generator</a> page.
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── API reference ───────────────────────────────────────────────────── -->
+<div class="panel mt20">
+  <div class="panel-header">
+    <span class="panel-title"><i class="bi bi-code-slash"></i> API Reference</span>
+  </div>
+  <div class="panel-body">
+    <div class="api-table">
+      <div class="api-row header">
+        <span>Method</span><span>Endpoint</span><span>Description</span>
+      </div>
+      <div class="api-row">
+        <span class="badge-method post">POST</span>
+        <span class="mono">/api/generate_log</span>
+        <span>Generate &amp; store a log event; forward to external endpoint</span>
+      </div>
+      <div class="api-row">
+        <span class="badge-method get">GET</span>
+        <span class="mono">/api/logs</span>
+        <span>Paginated list of log records from MySQL</span>
+      </div>
+      <div class="api-row">
+        <span class="badge-method get">GET</span>
+        <span class="mono">/api/stats</span>
+        <span>Aggregate statistics: totals, action breakdown, 7-day chart</span>
+      </div>
+      <div class="api-row">
+        <span class="badge-method get">GET</span>
+        <span class="mono">/api/config</span>
+        <span>Return current external endpoint URL</span>
+      </div>
+      <div class="api-row">
+        <span class="badge-method post">POST</span>
+        <span class="mono">/api/config/endpoint</span>
+        <span>Update the external endpoint URL at runtime</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Tech stack ──────────────────────────────────────────────────────── -->
+<div class="panel mt20">
+  <div class="panel-header">
+    <span class="panel-title"><i class="bi bi-stack"></i> Tech Stack</span>
+  </div>
+  <div class="panel-body">
+    <div class="stack-grid">
+      <div class="stack-item">
+        <i class="bi bi-filetype-py" style="color:#60a5fa"></i>
+        <span class="stack-label">Python Flask</span>
+        <span class="stack-role">Backend API</span>
+      </div>
+      <div class="stack-item">
+        <i class="bi bi-database-fill" style="color:#34d399"></i>
+        <span class="stack-label">MySQL</span>
+        <span class="stack-role">Log storage</span>
+      </div>
+      <div class="stack-item">
+        <i class="bi bi-filetype-html" style="color:#f59e0b"></i>
+        <span class="stack-label">HTML / Bootstrap 5</span>
+        <span class="stack-role">Frontend UI</span>
+      </div>
+      <div class="stack-item">
+        <i class="bi bi-filetype-js" style="color:#a78bfa"></i>
+        <span class="stack-label">Vanilla JavaScript</span>
+        <span class="stack-role">Dynamic behaviour</span>
+      </div>
+      <div class="stack-item">
+        <i class="bi bi-broadcast" style="color:#f87171"></i>
+        <span class="stack-label">HTTP POST (requests lib)</span>
+        <span class="stack-role">Event forwarding</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

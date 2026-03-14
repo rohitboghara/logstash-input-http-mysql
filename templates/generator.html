@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}Event Generator{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Event Generator</h1>
+    <p class="page-sub">Simulate user activity events</p>
+  </div>
+  <span class="live-badge"><span class="pulse-dot sm"></span> Ready</span>
+</div>
+
+<!-- ── Endpoint config ─────────────────────────────────────────────────── -->
+<div class="panel mb20">
+  <div class="panel-header">
+    <span class="panel-title"><i class="bi bi-gear"></i> Endpoint Configuration</span>
+    <span class="badge-pill" id="endpointStatus">Configured</span>
+  </div>
+  <div class="panel-body">
+    <div class="endpoint-row">
+      <input type="text" id="endpointInput" class="code-input" placeholder="http://localhost:8080"
+             value="{{ endpoint }}"/>
+      <button class="btn-primary-custom" onclick="saveEndpoint()">
+        <i class="bi bi-check2"></i> Save
+      </button>
+    </div>
+    <p class="hint-text"><i class="bi bi-info-circle"></i>
+      Events are POST-ed as JSON to this URL and also saved to MySQL.
+    </p>
+  </div>
+</div>
+
+<div class="content-row align-start">
+
+  <!-- ── Buttons ────────────────────────────────────────────────────────── -->
+  <div class="panel" style="flex:1.1">
+    <div class="panel-header">
+      <span class="panel-title"><i class="bi bi-lightning-charge"></i> Trigger Event</span>
+    </div>
+    <div class="panel-body">
+      <div class="event-buttons">
+        <button class="evt-btn green"  onclick="fire('login')">
+          <i class="bi bi-box-arrow-in-right"></i>
+          <span class="evt-label">Login</span>
+          <span class="evt-hint">Successful authentication</span>
+        </button>
+        <button class="evt-btn amber"  onclick="fire('logout')">
+          <i class="bi bi-box-arrow-right"></i>
+          <span class="evt-label">Logout</span>
+          <span class="evt-hint">Session terminated</span>
+        </button>
+        <button class="evt-btn red"    onclick="fire('failed_login')">
+          <i class="bi bi-exclamation-triangle"></i>
+          <span class="evt-label">Failed Login</span>
+          <span class="evt-hint">Invalid credentials</span>
+        </button>
+        <button class="evt-btn blue"   onclick="fire('create_order')">
+          <i class="bi bi-cart-plus"></i>
+          <span class="evt-label">Create Order</span>
+          <span class="evt-hint">New purchase created</span>
+        </button>
+        <button class="evt-btn purple" onclick="fire('profile_update')">
+          <i class="bi bi-person-gear"></i>
+          <span class="evt-label">Update Profile</span>
+          <span class="evt-hint">User data changed</span>
+        </button>
+      </div>
+
+      <!-- Custom username -->
+      <div class="custom-user-row">
+        <label class="field-label">Username override (optional)</label>
+        <input type="text" id="customUsername" class="code-input sm"
+               placeholder="Leave blank for random"/>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Activity log ───────────────────────────────────────────────────── -->
+  <div class="panel" style="flex:1.6">
+    <div class="panel-header">
+      <span class="panel-title"><i class="bi bi-terminal"></i> Activity Feed</span>
+      <button class="panel-link" onclick="clearFeed()">
+        <i class="bi bi-trash3"></i> Clear
+      </button>
+    </div>
+    <div class="panel-body p0">
+      <div id="activityFeed" class="activity-feed">
+        <div class="feed-empty">
+          <i class="bi bi-cursor-text"></i>
+          <p>Click an event button to start generating logs.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── JSON preview ────────────────────────────────────────────────────── -->
+<div class="panel mt20">
+  <div class="panel-header">
+    <span class="panel-title"><i class="bi bi-braces"></i> Last JSON Payload</span>
+    <button class="panel-link" onclick="copyJson()"><i class="bi bi-clipboard"></i> Copy</button>
+  </div>
+  <div class="panel-body p0">
+    <pre class="json-preview" id="jsonPreview">{
+  <span class="c-key">"username"</span>:  <span class="c-str">"—"</span>,
+  <span class="c-key">"action"</span>:    <span class="c-str">"—"</span>,
+  <span class="c-key">"source"</span>:    <span class="c-str">"web_app"</span>,
+  <span class="c-key">"source_ip"</span>: <span class="c-str">"—"</span>,
+  <span class="c-key">"timestamp"</span>: <span class="c-str">"—"</span>
+}</pre>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let feedCount = 0;
+const actionColors = {
+  login:"green", logout:"amber", failed_login:"red",
+  create_order:"blue", profile_update:"purple"
+};
+
+async function fire(action) {
+  const username = document.getElementById("customUsername").value.trim() || undefined;
+  const endpoint = document.getElementById("endpointInput").value.trim();
+
+  // Animate the button
+  const btns = document.querySelectorAll(".evt-btn");
+  btns.forEach(b => b.classList.remove("firing"));
+  const map = {login:0,logout:1,failed_login:2,create_order:3,profile_update:4};
+  if (map[action] !== undefined) btns[map[action]].classList.add("firing");
+
+  try {
+    const body = { action };
+    if (username) body.username = username;
+
+    const r  = await fetch("/api/generate_log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+
+    updateJsonPreview(d.event);
+    addFeedEntry(d, action);
+    setTimeout(() => btns.forEach(b => b.classList.remove("firing")), 800);
+
+  } catch(e) {
+    addFeedEntry({ success: false, http_error: e.message }, action);
+  }
+}
+
+function updateJsonPreview(ev) {
+  if (!ev) return;
+  document.getElementById("jsonPreview").innerHTML =
+    `{\n  <span class="c-key">"username"</span>:  <span class="c-str">"${ev.username}"</span>,\n  <span class="c-key">"action"</span>:    <span class="c-str">"${ev.action}"</span>,\n  <span class="c-key">"source"</span>:    <span class="c-str">"${ev.source}"</span>,\n  <span class="c-key">"source_ip"</span>: <span class="c-str">"${ev.source_ip}"</span>,\n  <span class="c-key">"timestamp"</span>: <span class="c-str">"${ev.timestamp}"</span>\n}`;
+}
+
+function addFeedEntry(d, action) {
+  const feed = document.getElementById("activityFeed");
+  // Remove empty state
+  const empty = feed.querySelector(".feed-empty");
+  if (empty) empty.remove();
+
+  feedCount++;
+  const col  = actionColors[action] || "gray";
+  const ev   = d.event || {};
+  const time = new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});
+
+  const dbOk   = d.db_status   === "ok";
+  const httpOk = d.http_status && d.http_status.startsWith("http_2");
+
+  const entry = document.createElement("div");
+  entry.className = "feed-entry slide-in";
+  entry.innerHTML = `
+    <div class="fe-left">
+      <span class="fe-num">#${feedCount}</span>
+      <span class="action-badge badge-${col}">${action.replace(/_/g," ")}</span>
+      <span class="fe-user mono">${ev.username || "—"}</span>
+      <span class="fe-ip dim mono">${ev.source_ip || "—"}</span>
+    </div>
+    <div class="fe-right">
+      <span class="status-dot ${dbOk?'ok':'err'}" title="MySQL ${d.db_status}"><i class="bi bi-database"></i></span>
+      <span class="status-dot ${httpOk?'ok':'warn'}" title="HTTP ${d.http_status}"><i class="bi bi-broadcast"></i></span>
+      <span class="fe-time dim">${time}</span>
+    </div>`;
+
+  feed.insertBefore(entry, feed.firstChild);
+  // keep max 50 entries
+  while (feed.children.length > 50) feed.removeChild(feed.lastChild);
+}
+
+function clearFeed() {
+  document.getElementById("activityFeed").innerHTML =
+    `<div class="feed-empty"><i class="bi bi-cursor-text"></i><p>Feed cleared. Click an event to start.</p></div>`;
+  feedCount = 0;
+}
+
+async function saveEndpoint() {
+  const url = document.getElementById("endpointInput").value.trim();
+  if (!url) return;
+  try {
+    const r = await fetch("/api/config/endpoint", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({endpoint: url}),
+    });
+    const d = await r.json();
+    if (d.success) {
+      document.getElementById("endpointStatus").textContent = "Saved ✓";
+      document.getElementById("endpointStatus").style.background = "var(--green-dim)";
+      document.getElementById("endpointStatus").style.color = "var(--green)";
+      updateSidebarEndpoint(url);
+    }
+  } catch(e) { /* silent */ }
+}
+
+function copyJson() {
+  const pre = document.getElementById("jsonPreview");
+  navigator.clipboard.writeText(pre.innerText).catch(()=>{});
+  const btn = event.currentTarget;
+  btn.innerHTML = '<i class="bi bi-check2"></i> Copied!';
+  setTimeout(() => btn.innerHTML = '<i class="bi bi-clipboard"></i> Copy', 1500);
+}
+</script>
+{% endblock %}

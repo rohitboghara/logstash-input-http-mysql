@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Dashboard</h1>
+    <p class="page-sub">Real-time activity overview</p>
+  </div>
+  <div class="header-actions">
+    <button class="btn-outline-custom" onclick="loadStats()">
+      <i class="bi bi-arrow-clockwise"></i> Refresh
+    </button>
+    <span class="live-badge"><span class="pulse-dot sm"></span> Live</span>
+  </div>
+</div>
+
+<!-- ── Stat cards ──────────────────────────────────────────────────────── -->
+<div class="stats-grid" id="statsGrid">
+  <div class="stat-card" id="sc-total">
+    <div class="stat-icon blue"><i class="bi bi-database"></i></div>
+    <div class="stat-body">
+      <div class="stat-label">Total DB Records</div>
+      <div class="stat-value" id="totalRecords">—</div>
+    </div>
+  </div>
+  <div class="stat-card" id="sc-login">
+    <div class="stat-icon green"><i class="bi bi-box-arrow-in-right"></i></div>
+    <div class="stat-body">
+      <div class="stat-label">Login Events</div>
+      <div class="stat-value" id="loginCount">—</div>
+    </div>
+  </div>
+  <div class="stat-card" id="sc-failed">
+    <div class="stat-icon red"><i class="bi bi-exclamation-triangle"></i></div>
+    <div class="stat-body">
+      <div class="stat-label">Failed Logins</div>
+      <div class="stat-value" id="failedCount">—</div>
+    </div>
+  </div>
+  <div class="stat-card" id="sc-logout">
+    <div class="stat-icon amber"><i class="bi bi-box-arrow-right"></i></div>
+    <div class="stat-body">
+      <div class="stat-label">Logouts</div>
+      <div class="stat-value" id="logoutCount">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Content row ─────────────────────────────────────────────────────── -->
+<div class="content-row">
+
+  <!-- Action breakdown -->
+  <div class="panel" style="flex:1.1">
+    <div class="panel-header">
+      <span class="panel-title"><i class="bi bi-pie-chart"></i> Event Breakdown</span>
+    </div>
+    <div class="panel-body" id="actionBreakdown">
+      <div class="loading-ring"></div>
+    </div>
+  </div>
+
+  <!-- Recent activity -->
+  <div class="panel" style="flex:1.6">
+    <div class="panel-header">
+      <span class="panel-title"><i class="bi bi-clock-history"></i> Recent Activity</span>
+      <a href="/logs" class="panel-link">View all <i class="bi bi-arrow-right"></i></a>
+    </div>
+    <div class="panel-body p0" id="recentActivity">
+      <div class="loading-ring" style="padding:2rem"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── 7-day bar chart ──────────────────────────────────────────────────── -->
+<div class="panel mt20">
+  <div class="panel-header">
+    <span class="panel-title"><i class="bi bi-bar-chart-line"></i> Last 7 Days</span>
+  </div>
+  <div class="panel-body">
+    <div id="barChart" class="bar-chart-area"></div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  loadStats();
+  setInterval(loadStats, 15000);
+});
+
+async function loadStats() {
+  try {
+    const r = await fetch("/api/stats");
+    const d = await r.json();
+    if (!d.success) { showDbError(d.error); return; }
+
+    // ── Stat cards
+    document.getElementById("totalRecords").textContent = d.total.toLocaleString();
+
+    const actionMap = {};
+    (d.by_action || []).forEach(a => actionMap[a.action] = a.count);
+    document.getElementById("loginCount").textContent  = (actionMap["login"]          || 0).toLocaleString();
+    document.getElementById("failedCount").textContent = (actionMap["failed_login"]   || 0).toLocaleString();
+    document.getElementById("logoutCount").textContent = (actionMap["logout"]         || 0).toLocaleString();
+
+    // ── Action breakdown
+    renderBreakdown(d.by_action || [], d.total);
+
+    // ── Recent activity
+    renderRecent(d.recent || []);
+
+    // ── Bar chart
+    renderBar(d.by_day || []);
+
+  } catch(e) {
+    showDbError(e.message);
+  }
+}
+
+function renderBreakdown(actions, total) {
+  const colors = {
+    login: "#34d399", logout: "#f59e0b",
+    failed_login: "#f87171", create_order: "#60a5fa",
+    profile_update: "#a78bfa",
+  };
+  const icons = {
+    login: "bi-box-arrow-in-right", logout: "bi-box-arrow-right",
+    failed_login: "bi-exclamation-triangle", create_order: "bi-cart-plus",
+    profile_update: "bi-person-gear",
+  };
+  const el = document.getElementById("actionBreakdown");
+  if (!actions.length) { el.innerHTML = '<p class="muted-text">No data yet.</p>'; return; }
+
+  el.innerHTML = actions.map(a => {
+    const pct = total ? Math.round((a.count / total) * 100) : 0;
+    const col = colors[a.action] || "#94a3b8";
+    const ico = icons[a.action]  || "bi-dot";
+    return `
+    <div class="breakdown-row">
+      <div class="bd-left">
+        <i class="bi ${ico}" style="color:${col}"></i>
+        <span class="bd-label">${a.action.replace(/_/g," ")}</span>
+      </div>
+      <div class="bd-bar-wrap">
+        <div class="bd-bar" style="width:${pct}%;background:${col}20;border-left:3px solid ${col}"></div>
+      </div>
+      <div class="bd-count">${a.count.toLocaleString()}</div>
+    </div>`;
+  }).join("");
+}
+
+function renderRecent(rows) {
+  const el = document.getElementById("recentActivity");
+  if (!rows.length) { el.innerHTML = '<p class="muted-text" style="padding:1rem">No events yet.</p>'; return; }
+  const actionClass = {
+    login: "badge-green", logout: "badge-amber",
+    failed_login: "badge-red", create_order: "badge-blue",
+    profile_update: "badge-purple",
+  };
+  el.innerHTML = `
+  <table class="log-table">
+    <thead><tr>
+      <th>User</th><th>Action</th><th>IP</th><th>Time</th>
+    </tr></thead>
+    <tbody>
+      ${rows.map(r => `
+      <tr>
+        <td class="mono">${r.username}</td>
+        <td><span class="action-badge ${actionClass[r.action]||'badge-gray'}">${r.action.replace(/_/g," ")}</span></td>
+        <td class="mono dim">${r.source_ip}</td>
+        <td class="mono dim">${formatTime(r.created_at)}</td>
+      </tr>`).join("")}
+    </tbody>
+  </table>`;
+}
+
+function renderBar(days) {
+  const el = document.getElementById("barChart");
+  if (!days.length) { el.innerHTML = '<p class="muted-text">No data for the past 7 days.</p>'; return; }
+  const max = Math.max(...days.map(d => d.count), 1);
+  el.innerHTML = `
+  <div class="bar-group">
+    ${days.map(d => {
+      const h = Math.max(4, Math.round((d.count / max) * 120));
+      return `
+      <div class="bar-col">
+        <div class="bar-tip">${d.count}</div>
+        <div class="bar-fill" style="height:${h}px"></div>
+        <div class="bar-label">${d.day ? d.day.slice(5) : ""}</div>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+
+function showDbError(msg) {
+  document.getElementById("actionBreakdown").innerHTML =
+    `<div class="alert-box red"><i class="bi bi-wifi-off"></i> DB error: ${msg}</div>`;
+}
+
+function formatTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+}
+</script>
+{% endblock %}
