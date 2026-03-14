@@ -22,7 +22,7 @@ services:
       timeout: 5s
       retries: 5
   web:
-    image: deamo-app:latest
+    build: .
     container_name: activitylog_web
     restart: unless-stopped
     depends_on:
